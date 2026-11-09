@@ -83,7 +83,8 @@ export const LocalRepoSyncPayloadSchema = z.object({
   hasConflicts: z.boolean().default(false),
   syncStatus: z.nativeEnum(SyncStatus),
   recommendation: z.nativeEnum(RecommendationAction),
-  isSafeToPull: z.boolean()
+  isSafeToPull: z.boolean(),
+  modifiedFiles: z.array(z.string()).default([])
 });
 export type LocalRepoSyncPayload = z.infer<typeof LocalRepoSyncPayloadSchema>;
 
