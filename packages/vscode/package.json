@@ -3,9 +3,9 @@
   "displayName": "SyncPull — GitHub Synchronization Assistant",
   "description": "Stay in sync. Never miss a commit. Proactive GitHub synchronization intelligence for your editor.",
   "version": "1.0.0",
-  "publisher": "bidut04",
+  "publisher": "Bidyutkumarbhowmick",
   "author": {
-    "name": "Bidut",
+    "name": "Bidyut Kumar Bhowmick",
     "url": "https://github.com/bidut04"
   },
   "icon": "icon.png",

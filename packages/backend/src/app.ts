@@ -182,7 +182,7 @@ export function createApp(
       dirtyCount: repos.filter(r => !r.workingTreeClean).length,
       repositories: repos.map(r => ({
         id: r.id,
-        repository: r.repoFullName,
+        repository: (r as any).repoFullName || r.remoteUrl || r.repositoryId,
         branch: r.currentBranch,
         trackingBranch: r.trackingBranch,
         behind: r.behindCount,
