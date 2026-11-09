@@ -109,7 +109,7 @@ async function inspectWorkspace(workspacePath: string): Promise<GitSyncState | n
   }
 }
 
-class GitPulseTreeDataProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
+class SyncPullTreeDataProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
   private _onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined | null | void> =
     new vscode.EventEmitter<vscode.TreeItem | undefined | null | void>();
   readonly onDidChangeTreeData: vscode.Event<vscode.TreeItem | undefined | null | void> =
@@ -160,11 +160,11 @@ class GitPulseTreeDataProvider implements vscode.TreeDataProvider<vscode.TreeIte
 
 export function activate(context: vscode.ExtensionContext) {
   const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-  statusBarItem.command = 'gitpulse.status';
+  statusBarItem.command = 'syncpull.status';
   context.subscriptions.push(statusBarItem);
 
-  const treeDataProvider = new GitPulseTreeDataProvider();
-  vscode.window.registerTreeDataProvider('gitpulse.statusView', treeDataProvider);
+  const treeDataProvider = new SyncPullTreeDataProvider();
+  vscode.window.registerTreeDataProvider('syncpull.statusView', treeDataProvider);
 
   async function refreshSyncState() {
     const folders = vscode.workspace.workspaceFolders;
@@ -186,17 +186,17 @@ export function activate(context: vscode.ExtensionContext) {
     // Update Status Bar
     if (syncState.behind > 0) {
       if (syncState.isSafeToPull) {
-        statusBarItem.text = `$(cloud-download) GitPulse: ${syncState.branch} (${syncState.behind} behind - Safe)`;
+        statusBarItem.text = `$(cloud-download) SyncPull: ${syncState.branch} (${syncState.behind} behind - Safe)`;
         statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
       } else {
-        statusBarItem.text = `$(alert) GitPulse: ${syncState.branch} (${syncState.behind} behind - Dirty)`;
+        statusBarItem.text = `$(alert) SyncPull: ${syncState.branch} (${syncState.behind} behind - Dirty)`;
         statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
       }
     } else if (syncState.status === 'UP_TO_DATE') {
-      statusBarItem.text = `$(check) GitPulse: ${syncState.branch} (In Sync)`;
+      statusBarItem.text = `$(check) SyncPull: ${syncState.branch} (In Sync)`;
       statusBarItem.backgroundColor = undefined;
     } else {
-      statusBarItem.text = `$(sync) GitPulse: ${syncState.branch} (${syncState.status})`;
+      statusBarItem.text = `$(sync) SyncPull: ${syncState.branch} (${syncState.status})`;
       statusBarItem.backgroundColor = undefined;
     }
 
@@ -204,54 +204,61 @@ export function activate(context: vscode.ExtensionContext) {
     statusBarItem.show();
   }
 
-  // Commands
+  const handleStatus = async () => {
+    await refreshSyncState();
+    const folders = vscode.workspace.workspaceFolders;
+    if (!folders) return;
+
+    const state = await inspectWorkspace(folders[0].uri.fsPath);
+    if (!state) return;
+
+    const items = [
+      { label: `$(repo) ${state.repoName} (${state.branch})`, description: state.status },
+      { label: `$(git-commit) Ahead: ${state.ahead} | Behind: ${state.behind}` },
+      { label: `$(lightbulb) ${state.message}` }
+    ];
+
+    if (state.isSafeToPull) {
+      items.push({ label: `$(cloud-download) Safe to Pull: Click to git pull --ff-only` });
+    }
+
+    const selected = await vscode.window.showQuickPick(items, {
+      title: 'SyncPull — Synchronization Status'
+    });
+
+    if (selected?.label.includes('Safe to Pull')) {
+      const term = vscode.window.createTerminal('SyncPull');
+      term.show();
+      term.sendText('git pull --ff-only');
+    }
+  };
+
+  const handleFetch = async () => {
+    const folders = vscode.workspace.workspaceFolders;
+    if (!folders) return;
+
+    try {
+      await runGit(folders[0].uri.fsPath, ['fetch', '--quiet']);
+      vscode.window.showInformationMessage('⚡ SyncPull: Remote tracking fetched successfully.');
+      await refreshSyncState();
+    } catch (err: any) {
+      vscode.window.showErrorMessage(`SyncPull fetch failed: ${err.message}`);
+    }
+  };
+
+  const handleMorningReport = async () => {
+    await refreshSyncState();
+    vscode.commands.executeCommand('syncpull.status');
+  };
+
+  // Register commands (both syncpull and legacy gitpulse aliases)
   context.subscriptions.push(
-    vscode.commands.registerCommand('gitpulse.status', async () => {
-      await refreshSyncState();
-      const folders = vscode.workspace.workspaceFolders;
-      if (!folders) return;
-
-      const state = await inspectWorkspace(folders[0].uri.fsPath);
-      if (!state) return;
-
-      const items = [
-        { label: `$(repo) ${state.repoName} (${state.branch})`, description: state.status },
-        { label: `$(git-commit) Ahead: ${state.ahead} | Behind: ${state.behind}` },
-        { label: `$(lightbulb) ${state.message}` }
-      ];
-
-      if (state.isSafeToPull) {
-        items.push({ label: `$(cloud-download) Safe to Pull: Click to git pull --ff-only` });
-      }
-
-      const selected = await vscode.window.showQuickPick(items, {
-        title: 'GitPulse — Synchronization Status'
-      });
-
-      if (selected?.label.includes('Safe to Pull')) {
-        const term = vscode.window.createTerminal('GitPulse');
-        term.show();
-        term.sendText('git pull --ff-only');
-      }
-    }),
-
-    vscode.commands.registerCommand('gitpulse.fetch', async () => {
-      const folders = vscode.workspace.workspaceFolders;
-      if (!folders) return;
-
-      try {
-        await runGit(folders[0].uri.fsPath, ['fetch', '--quiet']);
-        vscode.window.showInformationMessage('⚡ GitPulse: Remote tracking fetched successfully.');
-        await refreshSyncState();
-      } catch (err: any) {
-        vscode.window.showErrorMessage(`GitPulse fetch failed: ${err.message}`);
-      }
-    }),
-
-    vscode.commands.registerCommand('gitpulse.morningReport', async () => {
-      await refreshSyncState();
-      vscode.commands.executeCommand('gitpulse.status');
-    })
+    vscode.commands.registerCommand('syncpull.status', handleStatus),
+    vscode.commands.registerCommand('gitpulse.status', handleStatus),
+    vscode.commands.registerCommand('syncpull.fetch', handleFetch),
+    vscode.commands.registerCommand('gitpulse.fetch', handleFetch),
+    vscode.commands.registerCommand('syncpull.morningReport', handleMorningReport),
+    vscode.commands.registerCommand('gitpulse.morningReport', handleMorningReport)
   );
 
   // Poll workspace every 30 seconds
@@ -268,4 +275,3 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {}
-
