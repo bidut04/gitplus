@@ -1,0 +1,144 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id            String               @id @default(uuid())
+  githubId      String               @unique
+  username      String
+  email         String?
+  avatarUrl     String?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  subscriptions BranchSubscription[]
+  installations LocalInstallation[]
+  notifications Notification[]
+
+  @@index([githubId])
+}
+
+model Repository {
+  id                 String               @id @default(uuid())
+  githubRepositoryId String               @unique
+  name               String
+  fullName           String               @unique
+  defaultBranch      String               @default("main")
+  isPrivate          Boolean              @default(false)
+  status             String               @default("ACTIVE")
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  subscriptions      BranchSubscription[]
+  localRepositories  LocalRepository[]
+  events             GitHubEvent[]
+  notifications      Notification[]
+
+  @@index([fullName])
+}
+
+model BranchSubscription {
+  id                  String     @id @default(uuid())
+  userId              String
+  repositoryId        String
+  branchName          String
+  notificationEnabled Boolean    @default(true)
+  priority            String     @default("NORMAL")
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, repositoryId, branchName])
+  @@index([repositoryId, branchName])
+}
+
+model LocalInstallation {
+  id                    String            @id @default(uuid())
+  userId                String
+  deviceName            String
+  installationTokenHash String            @unique
+  lastHeartbeat         DateTime          @default(now())
+  status                String            @default("ONLINE")
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  localRepositories LocalRepository[]
+
+  @@index([userId])
+}
+
+model LocalRepository {
+  id               String            @id @default(uuid())
+  installationId   String
+  repositoryId     String
+  remoteUrl        String
+  localIdentifier  String
+  currentBranch    String
+  trackingBranch   String?
+  syncStatus       String            @default("UNKNOWN")
+  aheadCount       Int               @default(0)
+  behindCount      Int               @default(0)
+  workingTreeClean Boolean           @default(true)
+  isSafeToPull     Boolean           @default(false)
+  lastScannedAt    DateTime          @default(now())
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  installation LocalInstallation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  repository   Repository        @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  @@unique([installationId, localIdentifier])
+  @@index([repositoryId])
+}
+
+model GitHubEvent {
+  id               String         @id @default(uuid())
+  deliveryId       String         @unique
+  eventType        String
+  repositoryId     String?
+  branchName       String?
+  actorUsername    String?
+  beforeSha        String?
+  afterSha         String?
+  isForced         Boolean        @default(false)
+  payload          Json
+  processingStatus String         @default("PENDING")
+  receivedAt       DateTime       @default(now())
+  processedAt      DateTime?
+
+  repository    Repository?    @relation(fields: [repositoryId], references: [id])
+  notifications Notification[]
+
+  @@index([deliveryId])
+  @@index([repositoryId, branchName])
+}
+
+model Notification {
+  id               String       @id @default(uuid())
+  userId           String
+  repositoryId     String
+  repoFullName     String
+  eventId          String?
+  branchName       String
+  notificationType String
+  title            String
+  message          String
+  priority         String       @default("NORMAL")
+  isRead           Boolean      @default(false)
+  metadata         Json?
+  createdAt        DateTime     @default(now())
+
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  repository Repository   @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  event      GitHubEvent? @relation(fields: [eventId], references: [id])
+
+  @@index([userId, isRead, createdAt])
+  @@index([repositoryId, branchName, createdAt])
+}
+
