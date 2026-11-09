@@ -43,7 +43,8 @@ export class BackendClient {
       hasConflicts: report.hasConflicts,
       syncStatus: report.evaluation.status,
       recommendation: report.evaluation.action,
-      isSafeToPull: report.evaluation.isSafeToPull
+      isSafeToPull: report.evaluation.isSafeToPull,
+      modifiedFiles: report.modifiedFiles
     };
 
     try {

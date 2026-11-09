@@ -1,9 +1,14 @@
 {
-  "name": "gitpulse-vscode",
-  "displayName": "GitPulse — GitHub Synchronization Assistant",
+  "name": "syncpull-vscode",
+  "displayName": "syncpull — GitHub Synchronization Assistant",
   "description": "Stay in sync. Never miss a commit. Proactive GitHub synchronization intelligence for your editor.",
   "version": "1.0.0",
-  "publisher": "gitpulse",
+  "publisher": "bidut04",
+  "author": {
+    "name": "Bidut",
+    "url": "https://github.com/bidut04"
+  },
+  "icon": "icon.png",
   "engines": {
     "vscode": "^1.80.0"
   },

@@ -102,12 +102,22 @@ export async function inspectGitRepository(repoPath: string): Promise<LocalGitIn
   // 5. Working tree status check
   let workingTreeClean = true;
   let hasConflicts = false;
+  const modifiedFiles: string[] = [];
   try {
     const statusOutput = await runGit(repoPath, ['status', '--porcelain=v1']);
     if (statusOutput.length > 0) {
       workingTreeClean = false;
       const lines = statusOutput.split('\n');
-      hasConflicts = lines.some(line => line.startsWith('UU') || line.startsWith('AA'));
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        if (line.startsWith('UU') || line.startsWith('AA')) {
+          hasConflicts = true;
+        }
+        const filePath = line.substring(3).trim();
+        if (filePath) {
+          modifiedFiles.push(filePath);
+        }
+      }
     }
   } catch { }
 
@@ -149,6 +159,7 @@ export async function inspectGitRepository(repoPath: string): Promise<LocalGitIn
     isRebasing,
     isDetached,
     hasConflicts,
+    modifiedFiles,
     evaluation
   };
 }
