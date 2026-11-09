@@ -67,6 +67,7 @@ export class WebhookService {
 
     const branchName = payload.ref ? payload.ref.replace('refs/heads/', '') : 'unknown';
     const isForced = Boolean(payload.forced);
+    const isDeleted = Boolean(payload.deleted) || payload.after === '0000000000000000000000000000000000000000';
     const actorUsername = payload.sender?.login;
 
     // 3. Durably record event
@@ -91,7 +92,8 @@ export class WebhookService {
       branchName,
       actorUsername,
       commits: payload.commits || [],
-      isForced
+      isForced,
+      isDeleted
     });
 
     return { status: 'PROCESSED', event };

@@ -53,16 +53,22 @@ export function generateLocalIdentifier(repoPath: string): string {
 export async function inspectGitRepository(repoPath: string): Promise<LocalGitInspectionReport> {
   const localIdentifier = generateLocalIdentifier(repoPath);
 
-  // 1. Detect active branch & detached HEAD
+  // 1. Detect active branch & detached HEAD (handles unborn/empty repositories safely)
   let currentBranch = 'HEAD';
   let isDetached = false;
   try {
-    currentBranch = await runGit(repoPath, ['rev-parse', '--abbrev-ref', 'HEAD']);
-    if (currentBranch === 'HEAD') {
-      isDetached = true;
-    }
+    // symbolic-ref safely returns branch name even on brand new repos with zero commits
+    currentBranch = await runGit(repoPath, ['symbolic-ref', '--short', 'HEAD']);
   } catch {
-    isDetached = true;
+    try {
+      currentBranch = await runGit(repoPath, ['rev-parse', '--abbrev-ref', 'HEAD']);
+      if (currentBranch === 'HEAD') {
+        isDetached = true;
+      }
+    } catch {
+      currentBranch = 'main';
+      isDetached = false;
+    }
   }
 
   // 2. Detect remote URL and fullName

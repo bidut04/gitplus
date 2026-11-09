@@ -207,6 +207,18 @@ export function createApp(
       return res.status(400).json({ error: 'userId, repositoryId, branchName required' });
     }
 
+    // Fix Bug 1: Enforce uniqueness constraint [userId, repositoryId, branchName]
+    const existing = Array.from(store.subscriptions.values()).find(
+      s => s.userId === userId && s.repositoryId === repositoryId && s.branchName === branchName
+    );
+
+    if (existing) {
+      existing.priority = priority || existing.priority;
+      existing.notificationEnabled = true;
+      existing.updatedAt = new Date();
+      return res.status(200).json(existing);
+    }
+
     const sub = {
       id: crypto.randomUUID(),
       userId,
@@ -261,11 +273,20 @@ export function createApp(
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders();
 
+    // Fix Bug 3: Periodic keepalive ping to prevent proxy/ALB 504 drops
+    const pingTimer = setInterval(() => {
+      try {
+        res.write(': ping\n\n');
+      } catch {}
+    }, 25000);
+    if (pingTimer.unref) pingTimer.unref();
+
     const unsubscribe = notifService.subscribeSSE(notification => {
       res.write(`data: ${JSON.stringify(notification)}\n\n`);
     });
 
     req.on('close', () => {
+      clearInterval(pingTimer);
       unsubscribe();
     });
   });

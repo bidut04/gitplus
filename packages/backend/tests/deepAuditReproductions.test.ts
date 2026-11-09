@@ -29,8 +29,8 @@ describe('Deep Edge Case & Failure Mode Audit (Evidence-Based)', () => {
     return `sha256=${hmac.update(raw).digest('hex')}`;
   }
 
-  // BUG 1: Duplicate Subscriptions Created for Exact Same User/Repo/Branch
-  it('BUG-01: MemoryStore allows duplicate subscriptions for identical (userId, repoId, branch)', async () => {
+  // BUG 1: Duplicate Subscriptions Created for Exact Same User/Repo/Branch (FIXED)
+  it('BUG-01: Enforces uniqueness on (userId, repoId, branch) and prevents duplicate subscriptions', async () => {
     const subPayload = {
       userId: 'user-dup-test',
       repositoryId: 'repo-100',
@@ -42,19 +42,19 @@ describe('Deep Edge Case & Failure Mode Audit (Evidence-Based)', () => {
     const res2 = await request(app).post('/api/v1/subscriptions').send(subPayload);
 
     expect(res1.status).toBe(201);
-    expect(res2.status).toBe(201);
+    expect(res2.status).toBe(200);
 
     // Filter subscriptions for this user
     const userSubs = Array.from(store.subscriptions.values()).filter(
       s => s.userId === 'user-dup-test' && s.repositoryId === 'repo-100' && s.branchName === 'main'
     );
 
-    // EVIDENCE: In-memory store created 2 subscriptions instead of enforcing uniqueness constraint!
-    expect(userSubs.length).toBe(2);
+    // VERIFICATION: Exactly 1 subscription exists!
+    expect(userSubs.length).toBe(1);
   });
 
-  // BUG 2: Branch Deletion Webhooks are Processed as New Commits
-  it('BUG-02: GitHub push webhook with deleted=true creates NEW_COMMITS notification instead of BRANCH_DELETED', async () => {
+  // BUG 2: Branch Deletion Webhooks (FIXED)
+  it('BUG-02: GitHub push webhook with deleted=true creates BRANCH_DELETED notification', async () => {
     // Subscriber Alice
     const alice = { id: 'u-alice', githubId: '101', username: 'alice', createdAt: new Date(), updatedAt: new Date() };
     store.users.set(alice.id, alice);
@@ -101,9 +101,9 @@ describe('Deep Edge Case & Failure Mode Audit (Evidence-Based)', () => {
     const notifs = store.notifications.filter(n => n.userId === alice.id);
     expect(notifs).toHaveLength(1);
 
-    // EVIDENCE OF BUG: notificationType is NEW_COMMITS_AVAILABLE instead of BRANCH_DELETED!
-    expect(notifs[0].notificationType).toBe('NEW_COMMITS_AVAILABLE');
-    expect(notifs[0].title).toBe('New commits available on feature/temp');
+    // VERIFICATION: notificationType is BRANCH_DELETED
+    expect(notifs[0].notificationType).toBe('BRANCH_DELETED');
+    expect(notifs[0].title).toBe('Branch feature/temp was deleted');
   });
 
   // BUG 3: SSE Stream Lacks Periodic Heartbeat Ping (Risk of Silent Drop via Reverse Proxies)
@@ -123,18 +123,18 @@ describe('Deep Edge Case & Failure Mode Audit (Evidence-Based)', () => {
     });
   });
 
-  // BUG 4: Empty Git Repository (Zero Commits) Inspection Failure
+  // BUG 4: Empty Git Repository (Zero Commits) Inspection (FIXED)
   it('BUG-04: Agent inspectGitRepository handles empty repository with 0 commits gracefully', async () => {
     const emptyRepoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gitpulse-empty-'));
     execSync('git init -b main', { cwd: emptyRepoDir });
 
     try {
       const report = await inspectGitRepository(emptyRepoDir);
-      // Empty repo has no commits
-      expect(report.currentBranch).toBeDefined();
-    } catch (err: any) {
-      // EVIDENCE: If unhandled, execGit throws 'fatal: ambiguous argument HEAD'
-      expect(err).toBeDefined();
+      // Empty repo has no commits, detected correctly as main
+      expect(report.currentBranch).toBe('main');
+      expect(report.isDetached).toBe(false);
+      expect(report.aheadCount).toBe(0);
+      expect(report.behindCount).toBe(0);
     } finally {
       try {
         fs.rmSync(emptyRepoDir, { recursive: true, force: true });
@@ -142,8 +142,8 @@ describe('Deep Edge Case & Failure Mode Audit (Evidence-Based)', () => {
     }
   });
 
-  // BUG 5: Debounced Rapid Pushes Create Multiple Notification Entries Rather than Collapsing
-  it('BUG-05: Rapid push debouncing creates duplicate notification rows instead of coalescing into a single record', async () => {
+  // BUG 5: Debounced Rapid Pushes Coalesce in Place (FIXED)
+  it('BUG-05: Rapid push debouncing coalesces updates into a single notification record', async () => {
     const user = { id: 'u-debounce-test', githubId: '505', username: 'carol', createdAt: new Date(), updatedAt: new Date() };
     store.users.set(user.id, user);
 
@@ -200,7 +200,8 @@ describe('Deep Edge Case & Failure Mode Audit (Evidence-Based)', () => {
 
     const userNotifs = store.notifications.filter(n => n.userId === user.id);
 
-    // EVIDENCE: Two separate notification rows are created instead of updating/coalescing the pending notification!
-    expect(userNotifs.length).toBe(2);
+    // VERIFICATION: Exactly 1 notification row exists, updated in place!
+    expect(userNotifs.length).toBe(1);
+    expect(userNotifs[0].message).toContain('2 updates (2 commits total)');
   });
 });

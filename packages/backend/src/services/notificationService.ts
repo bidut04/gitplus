@@ -9,6 +9,7 @@ export interface PushNotificationContext {
   actorUsername?: string;
   commits: Array<{ id: string; message: string; author?: { username?: string; name?: string } }>;
   isForced: boolean;
+  isDeleted?: boolean;
 }
 
 export interface DebouncedPushGroup {
@@ -83,7 +84,7 @@ export class NotificationService {
   }
 
   async processPushNotifications(ctx: PushNotificationContext): Promise<NotificationEntity[]> {
-    const { event, repository, branchName, actorUsername, commits, isForced } = ctx;
+    const { event, repository, branchName, actorUsername, commits, isForced, isDeleted } = ctx;
     const commitCount = commits.length;
     const generated: NotificationEntity[] = [];
 
@@ -113,12 +114,39 @@ export class NotificationService {
         commitCount
       );
 
+      // Fix Bug 5: Coalesce rapid pushes into existing unread notification in-place
+      if (debounceCheck.isDebounced && debounceCheck.group && !isForced && !isDeleted) {
+        const existingUnread = this.store.notifications.find(
+          n => n.userId === user.id && n.repositoryId === repository.id && n.branchName === branchName && !n.isRead
+        );
+        if (existingUnread) {
+          existingUnread.title = `New updates available on ${branchName}`;
+          existingUnread.message = `${actorUsername || 'A contributor'} pushed ${debounceCheck.group.pushCount} updates (${debounceCheck.group.totalCommits} commits total) to ${repository.fullName}:${branchName}.`;
+          existingUnread.metadata = {
+            ...existingUnread.metadata,
+            commitCount: debounceCheck.group.totalCommits,
+            pushCount: debounceCheck.group.pushCount
+          };
+          existingUnread.createdAt = new Date();
+          generated.push(existingUnread);
+          continue;
+        }
+      }
+
       let title: string;
       let message: string;
       let priority: 'CRITICAL' | 'HIGH' | 'NORMAL' | 'MUTED' = sub.priority;
+      let notificationType: string = 'NEW_COMMITS_AVAILABLE';
 
-      if (isForced) {
+      // Fix Bug 2: Handle branch deletion events properly
+      if (isDeleted) {
+        priority = 'HIGH';
+        notificationType = 'BRANCH_DELETED';
+        title = `Branch ${branchName} was deleted`;
+        message = `${actorUsername || 'A contributor'} deleted branch ${branchName} on ${repository.fullName}.`;
+      } else if (isForced) {
         priority = 'CRITICAL';
+        notificationType = 'FORCE_PUSH_DETECTED';
         title = `⚠️ Force-Push Detected on ${branchName}`;
         message = `${actorUsername || 'A contributor'} force-pushed changes to ${repository.fullName}:${branchName}. Local history may have diverged.`;
       } else if (debounceCheck.isDebounced && debounceCheck.group) {
@@ -136,7 +164,7 @@ export class NotificationService {
         repoFullName: repository.fullName,
         eventId: event.id,
         branchName,
-        notificationType: isForced ? 'FORCE_PUSH_DETECTED' : 'NEW_COMMITS_AVAILABLE',
+        notificationType,
         title,
         message,
         priority,
@@ -144,6 +172,7 @@ export class NotificationService {
         metadata: {
           commitCount,
           isForced,
+          isDeleted,
           actorUsername
         },
         createdAt: new Date()
