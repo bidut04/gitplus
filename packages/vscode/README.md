@@ -54,3 +54,4 @@ Open your Command Palette (`Ctrl + Shift + P` or `Cmd + Shift + P`) and search:
 1. Press `Ctrl + Shift + X` to open the **Extensions** view.
 2. Type `@installed gitpulse` into the search box.
 3. Click on **GitPulse** to view this complete documentation, settings, and commands!
+
