@@ -1,0 +1,69 @@
+{
+  "name": "gitpulse-vscode",
+  "displayName": "GitPulse — GitHub Synchronization Assistant",
+  "description": "Stay in sync. Never miss a commit. Proactive GitHub synchronization intelligence for your editor.",
+  "version": "1.0.0",
+  "publisher": "gitpulse",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Source Control",
+    "SCM Providers",
+    "Productivity"
+  ],
+  "main": "./dist/extension.js",
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "dependencies": {
+    "@gitpulse/shared": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.7",
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.4.5"
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "gitpulse.status",
+        "title": "GitPulse: Check Synchronization Status",
+        "category": "GitPulse"
+      },
+      {
+        "command": "gitpulse.fetch",
+        "title": "GitPulse: Safe Non-Destructive Fetch",
+        "category": "GitPulse"
+      },
+      {
+        "command": "gitpulse.morningReport",
+        "title": "GitPulse: Open Morning Sync Report",
+        "category": "GitPulse"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "gitpulse-container",
+          "title": "GitPulse",
+          "icon": "$(sync)"
+        }
+      ]
+    },
+    "views": {
+      "gitpulse-container": [
+        {
+          "id": "gitpulse.statusView",
+          "name": "Repository Sync Status",
+          "type": "tree"
+        }
+      ]
+    }
+  }
+}

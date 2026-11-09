@@ -26,6 +26,7 @@ export interface LocalGitInspectionReport {
   isRebasing: boolean;
   isDetached: boolean;
   hasConflicts: boolean;
+  modifiedFiles: string[];
   evaluation: SyncEvaluationResult;
 }
 
