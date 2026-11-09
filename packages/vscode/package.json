@@ -12,6 +12,22 @@
     "SCM Providers",
     "Productivity"
   ],
+  "keywords": [
+    "git",
+    "gitpulse",
+    "gitlens",
+    "git blame",
+    "github",
+    "sync",
+    "synchronization",
+    "pull",
+    "commits",
+    "source control"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bidut04/gitplus.git"
+  },
   "main": "./dist/extension.js",
   "scripts": {
     "vscode:prepublish": "npm run build",
