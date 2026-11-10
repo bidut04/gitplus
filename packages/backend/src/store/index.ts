@@ -96,34 +96,53 @@ export interface NotificationEntity {
   createdAt: Date;
 }
 
-export class MemoryStore {
-  users = new Map<string, UserEntity>();
-  repositories = new Map<string, RepositoryEntity>();
-  subscriptions = new Map<string, BranchSubscriptionEntity>();
-  installations = new Map<string, LocalInstallationEntity>();
-  localRepositories = new Map<string, LocalRepositoryEntity>();
-  events = new Map<string, GitHubEventEntity>();
-  notifications: NotificationEntity[] = [];
+export interface IMemoryStore {
+  users: Map<string, UserEntity>;
+  repositories: Map<string, RepositoryEntity>;
+  subscriptions: Map<string, BranchSubscriptionEntity>;
+  installations: Map<string, LocalInstallationEntity>;
+  localRepositories: Map<string, LocalRepositoryEntity>;
+  events: Map<string, GitHubEventEntity>;
+  notifications: NotificationEntity[];
+  clear: () => void;
+  upsertRepository: (data: {
+    githubRepositoryId: string;
+    name: string;
+    fullName: string;
+    defaultBranch?: string;
+    isPrivate?: boolean;
+  }) => RepositoryEntity;
+  findEventByDeliveryId: (deliveryId: string) => GitHubEventEntity | undefined;
+  recordEvent: (evt: Omit<GitHubEventEntity, 'id' | 'receivedAt'>) => GitHubEventEntity;
+}
 
-  public readonly clear = (): void => {
-    this.users.clear();
-    this.repositories.clear();
-    this.subscriptions.clear();
-    this.installations.clear();
-    this.localRepositories.clear();
-    this.events.clear();
-    this.notifications = [];
+export const createMemoryStore = (): IMemoryStore => {
+  const users = new Map<string, UserEntity>();
+  const repositories = new Map<string, RepositoryEntity>();
+  const subscriptions = new Map<string, BranchSubscriptionEntity>();
+  const installations = new Map<string, LocalInstallationEntity>();
+  const localRepositories = new Map<string, LocalRepositoryEntity>();
+  const events = new Map<string, GitHubEventEntity>();
+  let notifications: NotificationEntity[] = [];
+
+  const clear = (): void => {
+    users.clear();
+    repositories.clear();
+    subscriptions.clear();
+    installations.clear();
+    localRepositories.clear();
+    events.clear();
+    notifications.length = 0;
   };
 
-  // Repository methods
-  public readonly upsertRepository = (data: {
+  const upsertRepository = (data: {
     githubRepositoryId: string;
     name: string;
     fullName: string;
     defaultBranch?: string;
     isPrivate?: boolean;
   }): RepositoryEntity => {
-    for (const repo of this.repositories.values()) {
+    for (const repo of repositories.values()) {
       if (repo.fullName === data.fullName || repo.githubRepositoryId === data.githubRepositoryId) {
         repo.name = data.name;
         repo.defaultBranch = data.defaultBranch ?? repo.defaultBranch;
@@ -143,13 +162,12 @@ export class MemoryStore {
       createdAt: new Date(),
       updatedAt: new Date()
     };
-    this.repositories.set(repo.id, repo);
+    repositories.set(repo.id, repo);
     return repo;
   };
 
-  // Event delivery deduplication
-  public readonly findEventByDeliveryId = (deliveryId: string): GitHubEventEntity | undefined => {
-    for (const evt of this.events.values()) {
+  const findEventByDeliveryId = (deliveryId: string): GitHubEventEntity | undefined => {
+    for (const evt of events.values()) {
       if (evt.deliveryId === deliveryId) {
         return evt;
       }
@@ -157,17 +175,39 @@ export class MemoryStore {
     return undefined;
   };
 
-  public readonly recordEvent = (evt: Omit<GitHubEventEntity, 'id' | 'receivedAt'>): GitHubEventEntity => {
+  const recordEvent = (evt: Omit<GitHubEventEntity, 'id' | 'receivedAt'>): GitHubEventEntity => {
     const id = crypto.randomUUID();
     const entity: GitHubEventEntity = {
       ...evt,
       id,
       receivedAt: new Date()
     };
-    this.events.set(id, entity);
+    events.set(id, entity);
     return entity;
   };
-}
 
-export const db = new MemoryStore();
-export const createMemoryStore = (): MemoryStore => new MemoryStore();
+  return {
+    users,
+    repositories,
+    subscriptions,
+    installations,
+    localRepositories,
+    events,
+    notifications,
+    clear,
+    upsertRepository,
+    findEventByDeliveryId,
+    recordEvent
+  };
+};
+
+export type MemoryStore = IMemoryStore;
+
+export const MemoryStore = function (this: any) {
+  return createMemoryStore();
+} as unknown as {
+  new (): MemoryStore;
+  (): MemoryStore;
+};
+
+export const db = createMemoryStore();

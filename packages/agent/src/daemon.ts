@@ -1,19 +1,23 @@
-import { AgentConfigManager } from './config/agentConfig';
+import { AgentConfigManager, createAgentConfigManager } from './config/agentConfig';
 import { discoverRepositories } from './scanner/workspaceScanner';
 import { inspectGitRepository } from './git/statusAnalyzer';
 import { safeFetch } from './git/fetcher';
-import { BackendClient } from './client/backendClient';
+import { createBackendClient } from './client/backendClient';
 
-export class AgentDaemon {
-  private isRunning: boolean = false;
-  private timer?: NodeJS.Timeout;
+export interface IAgentDaemon {
+  runSingleCycle: () => Promise<{ scannedCount: number; errors: string[] }>;
+  start: (intervalMs?: number) => void;
+  stop: () => void;
+}
 
-  constructor(
-    private configManager: AgentConfigManager = new AgentConfigManager()
-  ) { }
+export const createAgentDaemon = (
+  configManager: AgentConfigManager = createAgentConfigManager()
+): IAgentDaemon => {
+  let isRunning = false;
+  let timer: NodeJS.Timeout | undefined;
 
-  public readonly runSingleCycle = async (): Promise<{ scannedCount: number; errors: string[] }> => {
-    const config = this.configManager.loadConfig();
+  const runSingleCycle = async (): Promise<{ scannedCount: number; errors: string[] }> => {
+    const config = configManager.loadConfig();
     const errors: string[] = [];
 
     if (!config.installationId) {
@@ -21,7 +25,7 @@ export class AgentDaemon {
       return { scannedCount: 0, errors };
     }
 
-    const client = new BackendClient({
+    const client = createBackendClient({
       backendUrl: config.backendUrl,
       installationId: config.installationId,
       token: config.token
@@ -53,21 +57,21 @@ export class AgentDaemon {
     return { scannedCount, errors };
   };
 
-  public readonly start = (intervalMs?: number): void => {
-    if (this.isRunning) return;
-    this.isRunning = true;
+  const start = (intervalMs?: number): void => {
+    if (isRunning) return;
+    isRunning = true;
 
-    const interval = intervalMs || this.configManager.loadConfig().scanIntervalSeconds * 1000;
+    const interval = intervalMs || configManager.loadConfig().scanIntervalSeconds * 1000;
 
     const loop = async () => {
-      if (!this.isRunning) return;
+      if (!isRunning) return;
       try {
-        await this.runSingleCycle();
+        await runSingleCycle();
       } catch (err: any) {
         console.error('Agent daemon cycle encountered error:', err.message);
       } finally {
-        if (this.isRunning) {
-          this.timer = setTimeout(loop, interval);
+        if (isRunning) {
+          timer = setTimeout(loop, interval);
         }
       }
     };
@@ -75,12 +79,28 @@ export class AgentDaemon {
     loop();
   };
 
-  public readonly stop = (): void => {
-    this.isRunning = false;
-    if (this.timer) {
-      clearTimeout(this.timer);
+  const stop = (): void => {
+    isRunning = false;
+    if (timer) {
+      clearTimeout(timer);
     }
   };
-}
 
-export const createAgentDaemon = (configManager?: AgentConfigManager): AgentDaemon => new AgentDaemon(configManager);
+  return {
+    runSingleCycle,
+    start,
+    stop
+  };
+};
+
+export type AgentDaemon = IAgentDaemon;
+
+export const AgentDaemon = function (
+  this: any,
+  configManager: AgentConfigManager = createAgentConfigManager()
+) {
+  return createAgentDaemon(configManager);
+} as unknown as {
+  new (configManager?: AgentConfigManager): AgentDaemon;
+  (configManager?: AgentConfigManager): AgentDaemon;
+};

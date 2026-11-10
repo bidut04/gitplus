@@ -18,44 +18,58 @@ const DEFAULT_CONFIG: AgentConfigFile = {
   autoFetchEnabled: false
 };
 
-export class AgentConfigManager {
-  private configDir: string;
-  private configPath: string;
+export interface IAgentConfigManager {
+  loadConfig: () => AgentConfigFile;
+  saveConfig: (updates: Partial<AgentConfigFile>) => AgentConfigFile;
+  addMonitoredFolder: (folderPath: string) => string[];
+}
 
-  constructor(customPath?: string) {
-    this.configDir = customPath || path.join(os.homedir(), '.gitpulse');
-    this.configPath = path.join(this.configDir, 'config.json');
-  }
+export const createAgentConfigManager = (customPath?: string): IAgentConfigManager => {
+  const configDir = customPath || path.join(os.homedir(), '.gitpulse');
+  const configPath = path.join(configDir, 'config.json');
 
-  public readonly loadConfig = (): AgentConfigFile => {
+  const loadConfig = (): AgentConfigFile => {
     try {
-      if (fs.existsSync(this.configPath)) {
-        const raw = fs.readFileSync(this.configPath, 'utf8');
+      if (fs.existsSync(configPath)) {
+        const raw = fs.readFileSync(configPath, 'utf8');
         return { ...DEFAULT_CONFIG, ...JSON.parse(raw) };
       }
     } catch { }
     return { ...DEFAULT_CONFIG };
   };
 
-  public readonly saveConfig = (updates: Partial<AgentConfigFile>): AgentConfigFile => {
-    const current = this.loadConfig();
+  const saveConfig = (updates: Partial<AgentConfigFile>): AgentConfigFile => {
+    const current = loadConfig();
     const updated = { ...current, ...updates };
-    if (!fs.existsSync(this.configDir)) {
-      fs.mkdirSync(this.configDir, { recursive: true });
+    if (!fs.existsSync(configDir)) {
+      fs.mkdirSync(configDir, { recursive: true });
     }
-    fs.writeFileSync(this.configPath, JSON.stringify(updated, null, 2), 'utf8');
+    fs.writeFileSync(configPath, JSON.stringify(updated, null, 2), 'utf8');
     return updated;
   };
 
-  public readonly addMonitoredFolder = (folderPath: string): string[] => {
+  const addMonitoredFolder = (folderPath: string): string[] => {
     const absPath = path.resolve(folderPath);
-    const config = this.loadConfig();
+    const config = loadConfig();
     if (!config.monitoredFolders.includes(absPath)) {
       config.monitoredFolders.push(absPath);
-      this.saveConfig(config);
+      saveConfig(config);
     }
     return config.monitoredFolders;
   };
-}
 
-export const createAgentConfigManager = (customPath?: string): AgentConfigManager => new AgentConfigManager(customPath);
+  return {
+    loadConfig,
+    saveConfig,
+    addMonitoredFolder
+  };
+};
+
+export type AgentConfigManager = IAgentConfigManager;
+
+export const AgentConfigManager = function (this: any, customPath?: string) {
+  return createAgentConfigManager(customPath);
+} as unknown as {
+  new (customPath?: string): AgentConfigManager;
+  (customPath?: string): AgentConfigManager;
+};

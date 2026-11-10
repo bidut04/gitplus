@@ -7,18 +7,21 @@ export interface BackendClientConfig {
   token?: string;
 }
 
-export class BackendClient {
-  constructor(private config: BackendClientConfig) { }
+export interface IBackendClient {
+  sendHeartbeat: () => Promise<boolean>;
+  reportSyncStatus: (report: LocalGitInspectionReport) => Promise<boolean>;
+}
 
-  public readonly sendHeartbeat = async (): Promise<boolean> => {
+export const createBackendClient = (config: BackendClientConfig): IBackendClient => {
+  const sendHeartbeat = async (): Promise<boolean> => {
     try {
-      const res = await fetch(`${this.config.backendUrl}/api/v1/installations/heartbeat`, {
+      const res = await fetch(`${config.backendUrl}/api/v1/installations/heartbeat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(this.config.token ? { Authorization: `Bearer ${this.config.token}` } : {})
+          ...(config.token ? { Authorization: `Bearer ${config.token}` } : {})
         },
-        body: JSON.stringify({ installationId: this.config.installationId })
+        body: JSON.stringify({ installationId: config.installationId })
       });
       return res.ok;
     } catch {
@@ -26,9 +29,9 @@ export class BackendClient {
     }
   };
 
-  public readonly reportSyncStatus = async (report: LocalGitInspectionReport): Promise<boolean> => {
+  const reportSyncStatus = async (report: LocalGitInspectionReport): Promise<boolean> => {
     const payload: LocalRepoSyncPayload = {
-      installationId: this.config.installationId,
+      installationId: config.installationId,
       localIdentifier: report.localIdentifier,
       repoFullName: report.repoFullName,
       remoteUrl: report.remoteUrl,
@@ -48,11 +51,11 @@ export class BackendClient {
     };
 
     try {
-      const res = await fetch(`${this.config.backendUrl}/api/v1/local-repositories/sync`, {
+      const res = await fetch(`${config.backendUrl}/api/v1/local-repositories/sync`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(this.config.token ? { Authorization: `Bearer ${this.config.token}` } : {})
+          ...(config.token ? { Authorization: `Bearer ${config.token}` } : {})
         },
         body: JSON.stringify(payload)
       });
@@ -61,6 +64,18 @@ export class BackendClient {
       return false;
     }
   };
-}
 
-export const createBackendClient = (config: BackendClientConfig): BackendClient => new BackendClient(config);
+  return {
+    sendHeartbeat,
+    reportSyncStatus
+  };
+};
+
+export type BackendClient = IBackendClient;
+
+export const BackendClient = function (this: any, config: BackendClientConfig) {
+  return createBackendClient(config);
+} as unknown as {
+  new (config: BackendClientConfig): BackendClient;
+  (config: BackendClientConfig): BackendClient;
+};

@@ -21,27 +21,35 @@ export interface DebouncedPushGroup {
   lastTimestamp: number;
 }
 
-export class NotificationService {
-  private recentPushes: Map<string, DebouncedPushGroup> = new Map();
-  private sseClients: Set<(data: NotificationEntity) => void> = new Set();
-  private maxStoredNotifications: number = 5000;
+export interface INotificationService {
+  subscribeSSE: (callback: (data: NotificationEntity) => void) => () => void;
+  matchesBranch: (subscriptionPattern: string, branchName: string) => boolean;
+  shouldDebouncePush: (
+    author: string,
+    branch: string,
+    repoFullName: string,
+    commitCount: number,
+    windowMs?: number
+  ) => { isDebounced: boolean; group?: DebouncedPushGroup };
+  processPushNotifications: (ctx: PushNotificationContext) => Promise<NotificationEntity[]>;
+}
 
-  constructor(
-    private store: MemoryStore,
-    private cache: ICacheService = defaultCache
-  ) {}
+export const createNotificationService = (
+  store: MemoryStore,
+  cache: ICacheService = defaultCache
+): INotificationService => {
+  const recentPushes = new Map<string, DebouncedPushGroup>();
+  const sseClients = new Set<(data: NotificationEntity) => void>();
+  const maxStoredNotifications = 5000;
 
-  public readonly subscribeSSE = (callback: (data: NotificationEntity) => void): (() => void) => {
-    this.sseClients.add(callback);
+  const subscribeSSE = (callback: (data: NotificationEntity) => void): (() => void) => {
+    sseClients.add(callback);
     return () => {
-      this.sseClients.delete(callback);
+      sseClients.delete(callback);
     };
   };
 
-  /**
-   * Evaluates branch pattern matches (e.g. "main", "dev", "release/*").
-   */
-  public readonly matchesBranch = (subscriptionPattern: string, branchName: string): boolean => {
+  const matchesBranch = (subscriptionPattern: string, branchName: string): boolean => {
     if (subscriptionPattern === branchName) return true;
     if (subscriptionPattern.endsWith('/*')) {
       const prefix = subscriptionPattern.slice(0, -2);
@@ -50,10 +58,7 @@ export class NotificationService {
     return false;
   };
 
-  /**
-   * Groups rapid pushes by author and branch within a sliding time window (default 5 minutes).
-   */
-  public readonly shouldDebouncePush = (
+  const shouldDebouncePush = (
     author: string,
     branch: string,
     repoFullName: string,
@@ -62,7 +67,7 @@ export class NotificationService {
   ): { isDebounced: boolean; group?: DebouncedPushGroup } => {
     const key = `${repoFullName}:${branch}:${author}`;
     const now = Date.now();
-    const existing = this.recentPushes.get(key);
+    const existing = recentPushes.get(key);
 
     if (existing && now - existing.lastTimestamp < windowMs) {
       existing.pushCount += 1;
@@ -79,44 +84,40 @@ export class NotificationService {
       totalCommits: commitCount,
       lastTimestamp: now
     };
-    this.recentPushes.set(key, newGroup);
+    recentPushes.set(key, newGroup);
     return { isDebounced: false, group: newGroup };
   };
 
-  public readonly processPushNotifications = async (ctx: PushNotificationContext): Promise<NotificationEntity[]> => {
+  const processPushNotifications = async (ctx: PushNotificationContext): Promise<NotificationEntity[]> => {
     const { event, repository, branchName, actorUsername, commits, isForced, isDeleted } = ctx;
     const commitCount = commits.length;
     const generated: NotificationEntity[] = [];
 
-    // Find all users who are subscribed to this repository
-    const matchingSubscriptions = Array.from(this.store.subscriptions.values()).filter(sub => {
+    const matchingSubscriptions = Array.from(store.subscriptions.values()).filter(sub => {
       return (
         sub.repositoryId === repository.id &&
         sub.notificationEnabled &&
-        this.matchesBranch(sub.branchName, branchName)
+        matchesBranch(sub.branchName, branchName)
       );
     });
 
     for (const sub of matchingSubscriptions) {
-      const user = this.store.users.get(sub.userId);
+      const user = store.users.get(sub.userId);
       if (!user) continue;
 
-      // 1. Invariant: Suppress self-notifications!
       if (actorUsername && user.username.toLowerCase() === actorUsername.toLowerCase()) {
         continue;
       }
 
-      // 2. Debouncing / Grouping check
-      const debounceCheck = this.shouldDebouncePush(
+      const debounceCheck = shouldDebouncePush(
         actorUsername || 'unknown',
         branchName,
         repository.fullName,
         commitCount
       );
 
-      // Fix Bug 5: Coalesce rapid pushes into existing unread notification in-place
       if (debounceCheck.isDebounced && debounceCheck.group && !isForced && !isDeleted) {
-        const existingUnread = this.store.notifications.find(
+        const existingUnread = store.notifications.find(
           n => n.userId === user.id && n.repositoryId === repository.id && n.branchName === branchName && !n.isRead
         );
         if (existingUnread) {
@@ -138,7 +139,6 @@ export class NotificationService {
       let priority: 'CRITICAL' | 'HIGH' | 'NORMAL' | 'MUTED' = sub.priority;
       let notificationType: string = 'NEW_COMMITS_AVAILABLE';
 
-      // Fix Bug 2: Handle branch deletion events properly
       if (isDeleted) {
         priority = 'HIGH';
         notificationType = 'BRANCH_DELETED';
@@ -178,14 +178,13 @@ export class NotificationService {
         createdAt: new Date()
       };
 
-      this.store.notifications.push(notif);
-      if (this.store.notifications.length > this.maxStoredNotifications) {
-        this.store.notifications.splice(0, this.store.notifications.length - this.maxStoredNotifications);
+      store.notifications.push(notif);
+      if (store.notifications.length > maxStoredNotifications) {
+        store.notifications.splice(0, store.notifications.length - maxStoredNotifications);
       }
       generated.push(notif);
 
-      // Broadcast to active SSE listeners
-      this.sseClients.forEach(client => {
+      sseClients.forEach(client => {
         try {
           client(notif);
         } catch {}
@@ -194,7 +193,24 @@ export class NotificationService {
 
     return generated;
   };
-}
 
-export const createNotificationService = (store: MemoryStore, cache?: ICacheService): NotificationService =>
-  new NotificationService(store, cache);
+  return {
+    subscribeSSE,
+    matchesBranch,
+    shouldDebouncePush,
+    processPushNotifications
+  };
+};
+
+export type NotificationService = INotificationService;
+
+export const NotificationService = function (
+  this: any,
+  store: MemoryStore,
+  cache: ICacheService = defaultCache
+) {
+  return createNotificationService(store, cache);
+} as unknown as {
+  new (store: MemoryStore, cache?: ICacheService): NotificationService;
+  (store: MemoryStore, cache?: ICacheService): NotificationService;
+};

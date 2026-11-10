@@ -3,24 +3,27 @@ import { MemoryStore, GitHubEventEntity } from '../store/index';
 import { NotificationService } from './notificationService';
 import { ICacheService, defaultCache } from '../redis/redisClient';
 
-export class WebhookService {
-  constructor(
-    private store: MemoryStore,
-    private notifService: NotificationService,
-    private webhookSecret: string = process.env.GITHUB_WEBHOOK_SECRET || 'test-secret',
-    private cache: ICacheService = defaultCache
-  ) { }
+export interface IWebhookService {
+  verifySignature: (rawBody: string | Buffer, signatureHeader: string | undefined) => boolean;
+  handlePushEvent: (
+    deliveryId: string,
+    payload: any
+  ) => Promise<{ status: 'PROCESSED' | 'DUPLICATE' | 'IGNORED'; event?: GitHubEventEntity }>;
+}
 
-  /**
-   * Verifies the GitHub HMAC SHA-256 signature in constant-time to avoid timing attacks.
-   */
-  public readonly verifySignature = (rawBody: string | Buffer, signatureHeader: string | undefined): boolean => {
+export const createWebhookService = (
+  store: MemoryStore,
+  notifService: NotificationService,
+  webhookSecret: string = process.env.GITHUB_WEBHOOK_SECRET || 'test-secret',
+  cache: ICacheService = defaultCache
+): IWebhookService => {
+  const verifySignature = (rawBody: string | Buffer, signatureHeader: string | undefined): boolean => {
     if (!signatureHeader || !signatureHeader.startsWith('sha256=')) {
       return false;
     }
     const signature = signatureHeader.substring('sha256='.length);
     const expected = crypto
-      .createHmac('sha256', this.webhookSecret)
+      .createHmac('sha256', webhookSecret)
       .update(rawBody)
       .digest('hex');
 
@@ -30,23 +33,20 @@ export class WebhookService {
     return crypto.timingSafeEqual(Buffer.from(signature, 'utf8'), Buffer.from(expected, 'utf8'));
   };
 
-  /**
-   * Processes an incoming GitHub webhook with strict deduplication by deliveryId.
-   */
-  public readonly handlePushEvent = async (
+  const handlePushEvent = async (
     deliveryId: string,
     payload: any
   ): Promise<{ status: 'PROCESSED' | 'DUPLICATE' | 'IGNORED'; event?: GitHubEventEntity }> => {
     // 1. Distributed Redis / Cache Deduplication (7-day TTL)
     const dedupKey = `gitpulse:dedup:${deliveryId}`;
-    const isNew = await this.cache.setNxWithTtl(dedupKey, '1', 604800); // 7 days
+    const isNew = await cache.setNxWithTtl(dedupKey, '1', 604800); // 7 days
     if (!isNew) {
-      const existing = this.store.findEventByDeliveryId(deliveryId);
+      const existing = store.findEventByDeliveryId(deliveryId);
       return { status: 'DUPLICATE', event: existing };
     }
 
     // Secondary in-store check
-    const existing = this.store.findEventByDeliveryId(deliveryId);
+    const existing = store.findEventByDeliveryId(deliveryId);
     if (existing) {
       return { status: 'DUPLICATE', event: existing };
     }
@@ -57,7 +57,7 @@ export class WebhookService {
     }
 
     // 2. Ensure repository is recorded
-    const repo = this.store.upsertRepository({
+    const repo = store.upsertRepository({
       githubRepositoryId: String(repoPayload.id),
       name: repoPayload.name,
       fullName: repoPayload.full_name,
@@ -71,7 +71,7 @@ export class WebhookService {
     const actorUsername = payload.sender?.login;
 
     // 3. Durably record event
-    const event = this.store.recordEvent({
+    const event = store.recordEvent({
       deliveryId,
       eventType: 'push',
       repositoryId: repo.id,
@@ -86,7 +86,7 @@ export class WebhookService {
     });
 
     // 4. Dispatch notifications through Notification Intelligence
-    await this.notifService.processPushNotifications({
+    await notifService.processPushNotifications({
       event,
       repository: repo,
       branchName,
@@ -98,11 +98,34 @@ export class WebhookService {
 
     return { status: 'PROCESSED', event };
   };
-}
 
-export const createWebhookService = (
+  return {
+    verifySignature,
+    handlePushEvent
+  };
+};
+
+export type WebhookService = IWebhookService;
+
+export const WebhookService = function (
+  this: any,
   store: MemoryStore,
   notifService: NotificationService,
-  webhookSecret?: string,
-  cache?: ICacheService
-): WebhookService => new WebhookService(store, notifService, webhookSecret, cache);
+  webhookSecret: string = process.env.GITHUB_WEBHOOK_SECRET || 'test-secret',
+  cache: ICacheService = defaultCache
+) {
+  return createWebhookService(store, notifService, webhookSecret, cache);
+} as unknown as {
+  new (
+    store: MemoryStore,
+    notifService: NotificationService,
+    webhookSecret?: string,
+    cache?: ICacheService
+  ): WebhookService;
+  (
+    store: MemoryStore,
+    notifService: NotificationService,
+    webhookSecret?: string,
+    cache?: ICacheService
+  ): WebhookService;
+};
