@@ -31,35 +31,35 @@ export class NotificationService {
     private cache: ICacheService = defaultCache
   ) {}
 
-  subscribeSSE(callback: (data: NotificationEntity) => void): () => void {
+  public readonly subscribeSSE = (callback: (data: NotificationEntity) => void): (() => void) => {
     this.sseClients.add(callback);
     return () => {
       this.sseClients.delete(callback);
     };
-  }
+  };
 
   /**
    * Evaluates branch pattern matches (e.g. "main", "dev", "release/*").
    */
-  matchesBranch(subscriptionPattern: string, branchName: string): boolean {
+  public readonly matchesBranch = (subscriptionPattern: string, branchName: string): boolean => {
     if (subscriptionPattern === branchName) return true;
     if (subscriptionPattern.endsWith('/*')) {
       const prefix = subscriptionPattern.slice(0, -2);
       return branchName.startsWith(prefix + '/');
     }
     return false;
-  }
+  };
 
   /**
    * Groups rapid pushes by author and branch within a sliding time window (default 5 minutes).
    */
-  shouldDebouncePush(
+  public readonly shouldDebouncePush = (
     author: string,
     branch: string,
     repoFullName: string,
     commitCount: number,
     windowMs: number = 300000
-  ): { isDebounced: boolean; group?: DebouncedPushGroup } {
+  ): { isDebounced: boolean; group?: DebouncedPushGroup } => {
     const key = `${repoFullName}:${branch}:${author}`;
     const now = Date.now();
     const existing = this.recentPushes.get(key);
@@ -81,9 +81,9 @@ export class NotificationService {
     };
     this.recentPushes.set(key, newGroup);
     return { isDebounced: false, group: newGroup };
-  }
+  };
 
-  async processPushNotifications(ctx: PushNotificationContext): Promise<NotificationEntity[]> {
+  public readonly processPushNotifications = async (ctx: PushNotificationContext): Promise<NotificationEntity[]> => {
     const { event, repository, branchName, actorUsername, commits, isForced, isDeleted } = ctx;
     const commitCount = commits.length;
     const generated: NotificationEntity[] = [];
@@ -193,6 +193,8 @@ export class NotificationService {
     }
 
     return generated;
-  }
+  };
 }
 
+export const createNotificationService = (store: MemoryStore, cache?: ICacheService): NotificationService =>
+  new NotificationService(store, cache);

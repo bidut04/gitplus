@@ -10,7 +10,7 @@ export interface BackendClientConfig {
 export class BackendClient {
   constructor(private config: BackendClientConfig) { }
 
-  async sendHeartbeat(): Promise<boolean> {
+  public readonly sendHeartbeat = async (): Promise<boolean> => {
     try {
       const res = await fetch(`${this.config.backendUrl}/api/v1/installations/heartbeat`, {
         method: 'POST',
@@ -24,9 +24,9 @@ export class BackendClient {
     } catch {
       return false;
     }
-  }
+  };
 
-  async reportSyncStatus(report: LocalGitInspectionReport): Promise<boolean> {
+  public readonly reportSyncStatus = async (report: LocalGitInspectionReport): Promise<boolean> => {
     const payload: LocalRepoSyncPayload = {
       installationId: this.config.installationId,
       localIdentifier: report.localIdentifier,
@@ -60,6 +60,7 @@ export class BackendClient {
     } catch {
       return false;
     }
-  }
+  };
 }
 
+export const createBackendClient = (config: BackendClientConfig): BackendClient => new BackendClient(config);

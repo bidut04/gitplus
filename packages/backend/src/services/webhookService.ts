@@ -14,7 +14,7 @@ export class WebhookService {
   /**
    * Verifies the GitHub HMAC SHA-256 signature in constant-time to avoid timing attacks.
    */
-  verifySignature(rawBody: string | Buffer, signatureHeader: string | undefined): boolean {
+  public readonly verifySignature = (rawBody: string | Buffer, signatureHeader: string | undefined): boolean => {
     if (!signatureHeader || !signatureHeader.startsWith('sha256=')) {
       return false;
     }
@@ -28,15 +28,15 @@ export class WebhookService {
       return false;
     }
     return crypto.timingSafeEqual(Buffer.from(signature, 'utf8'), Buffer.from(expected, 'utf8'));
-  }
+  };
 
   /**
    * Processes an incoming GitHub webhook with strict deduplication by deliveryId.
    */
-  async handlePushEvent(
+  public readonly handlePushEvent = async (
     deliveryId: string,
     payload: any
-  ): Promise<{ status: 'PROCESSED' | 'DUPLICATE' | 'IGNORED'; event?: GitHubEventEntity }> {
+  ): Promise<{ status: 'PROCESSED' | 'DUPLICATE' | 'IGNORED'; event?: GitHubEventEntity }> => {
     // 1. Distributed Redis / Cache Deduplication (7-day TTL)
     const dedupKey = `gitpulse:dedup:${deliveryId}`;
     const isNew = await this.cache.setNxWithTtl(dedupKey, '1', 604800); // 7 days
@@ -97,6 +97,12 @@ export class WebhookService {
     });
 
     return { status: 'PROCESSED', event };
-  }
+  };
 }
 
+export const createWebhookService = (
+  store: MemoryStore,
+  notifService: NotificationService,
+  webhookSecret?: string,
+  cache?: ICacheService
+): WebhookService => new WebhookService(store, notifService, webhookSecret, cache);

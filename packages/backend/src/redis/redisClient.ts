@@ -23,16 +23,16 @@ class MemoryTtlCache implements ICacheService {
     if (this.timer.unref) this.timer.unref();
   }
 
-  private sweep() {
+  private readonly sweep = (): void => {
     const now = Date.now();
     for (const [k, v] of this.store.entries()) {
       if (v.expiresAt && v.expiresAt < now) {
         this.store.delete(k);
       }
     }
-  }
+  };
 
-  async setNxWithTtl(key: string, value: string, ttlSeconds: number): Promise<boolean> {
+  public readonly setNxWithTtl = async (key: string, value: string, ttlSeconds: number): Promise<boolean> => {
     const now = Date.now();
     const existing = this.store.get(key);
     if (existing && (!existing.expiresAt || existing.expiresAt > now)) {
@@ -40,9 +40,9 @@ class MemoryTtlCache implements ICacheService {
     }
     this.store.set(key, { value, expiresAt: now + ttlSeconds * 1000 });
     return true;
-  }
+  };
 
-  async get(key: string): Promise<string | null> {
+  public readonly get = async (key: string): Promise<string | null> => {
     const now = Date.now();
     const existing = this.store.get(key);
     if (!existing) return null;
@@ -51,32 +51,32 @@ class MemoryTtlCache implements ICacheService {
       return null;
     }
     return existing.value;
-  }
+  };
 
-  async set(key: string, value: string, ttlSeconds?: number): Promise<void> {
+  public readonly set = async (key: string, value: string, ttlSeconds?: number): Promise<void> => {
     const expiresAt = ttlSeconds ? Date.now() + ttlSeconds * 1000 : undefined;
     this.store.set(key, { value, expiresAt });
-  }
+  };
 
-  async del(key: string): Promise<void> {
+  public readonly del = async (key: string): Promise<void> => {
     this.store.delete(key);
-  }
+  };
 
-  async incrWithTtl(key: string, ttlSeconds: number): Promise<number> {
+  public readonly incrWithTtl = async (key: string, ttlSeconds: number): Promise<number> => {
     const current = await this.get(key);
     const count = current ? parseInt(current, 10) + 1 : 1;
     await this.set(key, String(count), ttlSeconds);
     return count;
-  }
+  };
 
-  async close(): Promise<void> {
+  public readonly close = async (): Promise<void> => {
     if (this.timer) clearInterval(this.timer);
     this.store.clear();
-  }
+  };
 
-  isRedisConnected(): boolean {
+  public readonly isRedisConnected = (): boolean => {
     return false;
-  }
+  };
 }
 
 /**
@@ -127,11 +127,11 @@ export class GitPulseCache implements ICacheService {
     }
   }
 
-  isRedisConnected(): boolean {
+  public readonly isRedisConnected = (): boolean => {
     return this.connected && this.redis?.status === 'ready';
-  }
+  };
 
-  async setNxWithTtl(key: string, value: string, ttlSeconds: number): Promise<boolean> {
+  public readonly setNxWithTtl = async (key: string, value: string, ttlSeconds: number): Promise<boolean> => {
     if (this.isRedisConnected() && this.redis) {
       try {
         const res = await this.redis.set(key, value, 'EX', ttlSeconds, 'NX');
@@ -141,18 +141,18 @@ export class GitPulseCache implements ICacheService {
       }
     }
     return this.fallback.setNxWithTtl(key, value, ttlSeconds);
-  }
+  };
 
-  async get(key: string): Promise<string | null> {
+  public readonly get = async (key: string): Promise<string | null> => {
     if (this.isRedisConnected() && this.redis) {
       try {
         return await this.redis.get(key);
       } catch {}
     }
     return this.fallback.get(key);
-  }
+  };
 
-  async set(key: string, value: string, ttlSeconds?: number): Promise<void> {
+  public readonly set = async (key: string, value: string, ttlSeconds?: number): Promise<void> => {
     if (this.isRedisConnected() && this.redis) {
       try {
         if (ttlSeconds) {
@@ -164,9 +164,9 @@ export class GitPulseCache implements ICacheService {
       } catch {}
     }
     return this.fallback.set(key, value, ttlSeconds);
-  }
+  };
 
-  async del(key: string): Promise<void> {
+  public readonly del = async (key: string): Promise<void> => {
     if (this.isRedisConnected() && this.redis) {
       try {
         await this.redis.del(key);
@@ -174,9 +174,9 @@ export class GitPulseCache implements ICacheService {
       } catch {}
     }
     return this.fallback.del(key);
-  }
+  };
 
-  async incrWithTtl(key: string, ttlSeconds: number): Promise<number> {
+  public readonly incrWithTtl = async (key: string, ttlSeconds: number): Promise<number> => {
     if (this.isRedisConnected() && this.redis) {
       try {
         const count = await this.redis.incr(key);
@@ -187,17 +187,17 @@ export class GitPulseCache implements ICacheService {
       } catch {}
     }
     return this.fallback.incrWithTtl(key, ttlSeconds);
-  }
+  };
 
-  async close(): Promise<void> {
+  public readonly close = async (): Promise<void> => {
     if (this.redis) {
       try {
         await this.redis.quit();
       } catch {}
     }
     await this.fallback.close();
-  }
+  };
 }
 
 export const defaultCache = new GitPulseCache();
-
+export const createGitPulseCache = (redisUrl?: string, customOptions?: RedisOptions): GitPulseCache => new GitPulseCache(redisUrl, customOptions);

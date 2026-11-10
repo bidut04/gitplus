@@ -105,7 +105,7 @@ export class MemoryStore {
   events = new Map<string, GitHubEventEntity>();
   notifications: NotificationEntity[] = [];
 
-  clear() {
+  public readonly clear = (): void => {
     this.users.clear();
     this.repositories.clear();
     this.subscriptions.clear();
@@ -113,16 +113,16 @@ export class MemoryStore {
     this.localRepositories.clear();
     this.events.clear();
     this.notifications = [];
-  }
+  };
 
   // Repository methods
-  upsertRepository(data: {
+  public readonly upsertRepository = (data: {
     githubRepositoryId: string;
     name: string;
     fullName: string;
     defaultBranch?: string;
     isPrivate?: boolean;
-  }): RepositoryEntity {
+  }): RepositoryEntity => {
     for (const repo of this.repositories.values()) {
       if (repo.fullName === data.fullName || repo.githubRepositoryId === data.githubRepositoryId) {
         repo.name = data.name;
@@ -145,19 +145,19 @@ export class MemoryStore {
     };
     this.repositories.set(repo.id, repo);
     return repo;
-  }
+  };
 
   // Event delivery deduplication
-  findEventByDeliveryId(deliveryId: string): GitHubEventEntity | undefined {
+  public readonly findEventByDeliveryId = (deliveryId: string): GitHubEventEntity | undefined => {
     for (const evt of this.events.values()) {
       if (evt.deliveryId === deliveryId) {
         return evt;
       }
     }
     return undefined;
-  }
+  };
 
-  recordEvent(evt: Omit<GitHubEventEntity, 'id' | 'receivedAt'>): GitHubEventEntity {
+  public readonly recordEvent = (evt: Omit<GitHubEventEntity, 'id' | 'receivedAt'>): GitHubEventEntity => {
     const id = crypto.randomUUID();
     const entity: GitHubEventEntity = {
       ...evt,
@@ -166,8 +166,8 @@ export class MemoryStore {
     };
     this.events.set(id, entity);
     return entity;
-  }
+  };
 }
 
 export const db = new MemoryStore();
-
+export const createMemoryStore = (): MemoryStore => new MemoryStore();

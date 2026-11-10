@@ -117,16 +117,16 @@ class SyncPullTreeDataProvider implements vscode.TreeDataProvider<vscode.TreeIte
 
   private currentState: GitSyncState | null = null;
 
-  updateState(state: GitSyncState | null) {
+  public readonly updateState = (state: GitSyncState | null): void => {
     this.currentState = state;
     this._onDidChangeTreeData.fire();
-  }
+  };
 
-  getTreeItem(element: vscode.TreeItem): vscode.TreeItem {
+  public readonly getTreeItem = (element: vscode.TreeItem): vscode.TreeItem => {
     return element;
-  }
+  };
 
-  async getChildren(): Promise<vscode.TreeItem[]> {
+  public readonly getChildren = async (): Promise<vscode.TreeItem[]> => {
     if (!this.currentState) {
       const item = new vscode.TreeItem('No Git repository detected in workspace');
       item.iconPath = new vscode.ThemeIcon('info');

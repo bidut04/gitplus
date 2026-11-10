@@ -12,7 +12,7 @@ export class AgentDaemon {
     private configManager: AgentConfigManager = new AgentConfigManager()
   ) { }
 
-  async runSingleCycle(): Promise<{ scannedCount: number; errors: string[] }> {
+  public readonly runSingleCycle = async (): Promise<{ scannedCount: number; errors: string[] }> => {
     const config = this.configManager.loadConfig();
     const errors: string[] = [];
 
@@ -51,9 +51,9 @@ export class AgentDaemon {
     }
 
     return { scannedCount, errors };
-  }
+  };
 
-  start(intervalMs?: number) {
+  public readonly start = (intervalMs?: number): void => {
     if (this.isRunning) return;
     this.isRunning = true;
 
@@ -73,13 +73,14 @@ export class AgentDaemon {
     };
 
     loop();
-  }
+  };
 
-  stop() {
+  public readonly stop = (): void => {
     this.isRunning = false;
     if (this.timer) {
       clearTimeout(this.timer);
     }
-  }
+  };
 }
 
+export const createAgentDaemon = (configManager?: AgentConfigManager): AgentDaemon => new AgentDaemon(configManager);

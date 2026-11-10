@@ -27,7 +27,7 @@ export class AgentConfigManager {
     this.configPath = path.join(this.configDir, 'config.json');
   }
 
-  loadConfig(): AgentConfigFile {
+  public readonly loadConfig = (): AgentConfigFile => {
     try {
       if (fs.existsSync(this.configPath)) {
         const raw = fs.readFileSync(this.configPath, 'utf8');
@@ -35,9 +35,9 @@ export class AgentConfigManager {
       }
     } catch { }
     return { ...DEFAULT_CONFIG };
-  }
+  };
 
-  saveConfig(updates: Partial<AgentConfigFile>): AgentConfigFile {
+  public readonly saveConfig = (updates: Partial<AgentConfigFile>): AgentConfigFile => {
     const current = this.loadConfig();
     const updated = { ...current, ...updates };
     if (!fs.existsSync(this.configDir)) {
@@ -45,9 +45,9 @@ export class AgentConfigManager {
     }
     fs.writeFileSync(this.configPath, JSON.stringify(updated, null, 2), 'utf8');
     return updated;
-  }
+  };
 
-  addMonitoredFolder(folderPath: string): string[] {
+  public readonly addMonitoredFolder = (folderPath: string): string[] => {
     const absPath = path.resolve(folderPath);
     const config = this.loadConfig();
     if (!config.monitoredFolders.includes(absPath)) {
@@ -55,6 +55,7 @@ export class AgentConfigManager {
       this.saveConfig(config);
     }
     return config.monitoredFolders;
-  }
+  };
 }
 
+export const createAgentConfigManager = (customPath?: string): AgentConfigManager => new AgentConfigManager(customPath);
